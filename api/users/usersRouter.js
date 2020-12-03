@@ -2,7 +2,32 @@ const db = require("../../dbConfig.js");
 const Users = require("./usersModel.js");
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
-router.get("/", async (req, res) => {
+const jwt = require("jsonwebtoken");
+const secret = process.env.JWT_SECRET;
+
+const verifyToken = async (req, res, next) => {
+  const token = req.headers["authorization"].split(" ")[1] || null;
+  if (token) {
+    tokenValue = jwt.verify(token, secret);
+    if (tokenValue.username) {
+      try {
+        const user = await Users.getUser(tokenValue.username);
+        if (user && user.username) {
+          req.user = user;
+          next();
+        } else {
+          res.status(401).json({ message: "access denied" });
+        }
+      } catch (error) {
+        res.status(401).json({ message: "access denied" });
+      }
+    }
+  } else {
+    res.status(401).json({ message: "access denied" });
+  }
+};
+
+router.get("/", verifyToken, async (req, res) => {
   try {
     const users = await Users.getUsers();
     res.status(200).json({ users });
@@ -43,8 +68,8 @@ router.post("/login", async (req, res) => {
     const user = await Users.getUser(username);
     if (user && user.username) {
       if (bcrypt.compareSync(password, user.hash)) {
-        console.log("logged in!");
-        res.status(200).json({ message: "logged in!" });
+        const token = jwt.sign({ username }, secret, { expiresIn: "10d" });
+        res.status(200).json({ message: "logged in!", token });
       } else {
         console.log("incorrect password");
         res.status(401).json({ message: "incorrect password" });
